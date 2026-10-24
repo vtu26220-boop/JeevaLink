@@ -5,7 +5,7 @@ import { seedInitialData } from './scripts/seed';
 
 const startServer = async () => {
   try {
-    // Connect to database (with automatic in-memory fallback if no MONGODB_URI)
+    // Connect to MongoDB Atlas (must resolve before server starts listening)
     await connectDB();
 
     // Auto-seed verified healthcare resources & default admin if DB is fresh
@@ -31,8 +31,11 @@ const startServer = async () => {
 
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
-  } catch (error) {
-    console.error('Fatal error starting server:', error);
+  } catch (error: any) {
+    const safeError = (error?.message || error || 'Unknown error')
+      .toString()
+      .replace(/:([^:@]+)@/, ':****@');
+    console.error('Fatal error starting server:', safeError);
     process.exit(1);
   }
 };

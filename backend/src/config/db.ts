@@ -1,46 +1,48 @@
 import mongoose from 'mongoose';
 import { ENV } from './env';
 
-let mongodInstance: any = null;
-
 export const connectDB = async (): Promise<void> => {
+  const uri = ENV.MONGODB_URI;
+
+  if (!uri) {
+    const errorMsg = 'MONGODB_URI is not defined in backend/.env. Please configure a valid MongoDB Atlas connection string.';
+    console.error(`❌ ${errorMsg}`);
+    throw new Error(errorMsg);
+  }
+
   try {
-    let uri = ENV.MONGODB_URI;
-
-    if (!uri) {
-      console.log('ℹ️  No MONGODB_URI provided in environment. Initializing local in-memory MongoDB instance for development/testing...');
-      try {
-        const { MongoMemoryServer } = await import('mongodb-memory-server');
-        mongodInstance = await MongoMemoryServer.create();
-        uri = mongodInstance.getUri();
-        console.log(`✅ In-memory MongoDB running at: ${uri}`);
-      } catch (err) {
-        console.warn('⚠️  Could not initialize in-memory MongoDB. Falling back to default localhost:27017/jeevalink');
-        uri = 'mongodb://127.0.0.1:27017/jeevalink';
-      }
-    }
-
     mongoose.set('strictQuery', false);
-    await mongoose.connect(uri);
 
-    console.log(`🚀 MongoDB connected successfully to: ${mongoose.connection.host} [database: ${mongoose.connection.name}]`);
-  } catch (error) {
-    console.error('❌ MongoDB connection error:', error);
-    // Don't crash immediately in dev, but log clearly
-    if (ENV.NODE_ENV === 'production') {
-      process.exit(1);
-    }
+    const isTls =
+      uri.startsWith('mongodb+srv://') ||
+      uri.includes('tls=true') ||
+      uri.includes('ssl=true');
+
+    const options: mongoose.ConnectOptions = {
+      serverSelectionTimeoutMS: 15000,
+      ...(isTls ? { tlsAllowInvalidCertificates: true } : {}),
+    };
+
+    await mongoose.connect(uri, options);
+
+    console.log(
+      `🚀 MongoDB connected successfully to: ${mongoose.connection.host} [database: ${mongoose.connection.name}]`
+    );
+  } catch (error: any) {
+    const safeMsg = (error.message || 'Unknown connection error').replace(
+      /:([^:@]+)@/,
+      ':****@'
+    );
+    console.error(`❌ MongoDB connection error: ${safeMsg}`);
+    throw error;
   }
 };
 
 export const disconnectDB = async (): Promise<void> => {
   try {
     await mongoose.disconnect();
-    if (mongodInstance) {
-      await mongodInstance.stop();
-    }
     console.log('🛑 MongoDB disconnected');
-  } catch (error) {
-    console.error('❌ Error disconnecting MongoDB:', error);
+  } catch (error: any) {
+    console.error('❌ Error disconnecting MongoDB:', error.message || error);
   }
 };
