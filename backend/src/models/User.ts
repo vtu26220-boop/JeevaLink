@@ -1,3 +1,4 @@
+
 import mongoose, { Document, Schema } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
@@ -8,6 +9,7 @@ export interface IUser extends Document {
   name: string;
   email: string;
   password?: string;
+  googleId?: string;
   phone: string;
   city: string;
   state: string;
@@ -29,6 +31,7 @@ const UserSchema = new Schema<IUser>(
       trim: true,
       maxlength: [100, 'Name cannot exceed 100 characters'],
     },
+
     email: {
       type: String,
       required: [true, 'Email address is required'],
@@ -38,52 +41,74 @@ const UserSchema = new Schema<IUser>(
       index: true,
       match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email address'],
     },
+
+    // Password is optional for Google-authenticated accounts.
     password: {
       type: String,
-      required: [true, 'Password is required'],
+      required: false,
       minlength: [8, 'Password must be at least 8 characters long'],
-      select: false, // Don't return password by default
+      select: false,
     },
+
+    // Google subject identifier, populated after server-side token verification.
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+    },
+
     phone: {
       type: String,
-      required: [true, 'Phone number is required'],
+      required: false,
       trim: true,
+      default: '',
     },
+
     city: {
       type: String,
-      required: [true, 'City is required'],
+      required: false,
       trim: true,
+      default: '',
       index: true,
     },
+
     state: {
       type: String,
-      required: [true, 'State is required'],
+      required: false,
       trim: true,
+      default: '',
       index: true,
     },
+
     profilePhoto: {
       type: String,
       default: '',
     },
+
     role: {
       type: String,
       enum: ['guest', 'user', 'donor', 'requester', 'admin'],
       default: 'user',
       index: true,
     },
+
     isDonor: {
       type: Boolean,
       default: false,
       index: true,
     },
+
     isRequester: {
       type: Boolean,
       default: false,
       index: true,
     },
+
     termsAccepted: {
       type: Boolean,
-      required: [true, 'Terms and privacy policy acceptance is required'],
+      required: false,
+      default: false,
     },
   },
   {
@@ -91,23 +116,29 @@ const UserSchema = new Schema<IUser>(
   }
 );
 
-// Hash password before saving if modified
+// Hash passwords only when a password is provided or changed.
 UserSchema.pre<IUser>('save', async function (next) {
   if (!this.isModified('password') || !this.password) {
     return next();
   }
+
   try {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
     next();
-  } catch (err: any) {
-    next(err);
+  } catch (error) {
+    next(error as Error);
   }
 });
 
-// Method to verify password
-UserSchema.methods.comparePassword = async function (candidatePassword: string): Promise<boolean> {
-  if (!this.password) return false;
+// Verify passwords for regular email/password login.
+UserSchema.methods.comparePassword = async function (
+  candidatePassword: string
+): Promise<boolean> {
+  if (!this.password) {
+    return false;
+  }
+
   return bcrypt.compare(candidatePassword, this.password);
 };
 
